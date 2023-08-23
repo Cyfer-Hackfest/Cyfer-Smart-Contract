@@ -4,7 +4,9 @@
   "license": "(MIT AND Apache-2.0)",
   "scripts": {
     "start": "cd frontend && npm run start",
-    "deploy": "cd contract && ./deploy.sh",
+    "deploy": "npm run deploy:nft && npm run deploy:marketplace",
+    "deploy:marketplace": "cd contract/marketplace-contract && ./deploy.sh",
+    "deploy:nft": "cd contract/nft-contract && ./deploy.sh",
     "build": "npm run build:contract && npm run build:web",
     "build:web": "cd frontend && npm run build",
     "build:contract": "npm run build:contract:market && npm run build:contract:nft",
@@ -12,8 +14,8 @@
     "build:contract:nft": "cd contract/nft-contract && ./build.sh",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "npm run test:unit:marketplace && npm run test:unit:nft",
-    "test:unit:marketplace": "cd marketplace-contract && cargo test",
-    "test:unit:nft": "cd nft-contract && cargo test",
+    "test:unit:marketplace": "cd contract/marketplace-contract && cargo test",
+    "test:unit:nft": "cd contract/nft-contract && cargo test",
     "test:integration": "npm run build:contract && cd integration-tests && cargo run --example integration-tests \"../contract/target/wasm32-unknown-unknown/release/nft_cyfer.wasm\"",
     "postinstall": "cd frontend && npm install && cd .. && echo rs tests && echo rs contract"
   },

@@ -1,122 +1,200 @@
-use crate::*;
+/* unit tests */
+use crate::sale::Sale;
+#[cfg(test)]
+use crate::Contract;
+use near_sdk::{
+    collections::UnorderedSet,
+    env,
+    json_types::{U128, U64},
+    test_utils::{accounts, VMContextBuilder},
+    testing_env, AccountId,
+};
 
-#[near_bindgen]
-impl Contract {
-    /// views
-    
-    //returns the number of sales the marketplace has up (as a string)
-    pub fn get_supply_sales(
-        &self,
-    ) -> U64 {
-        //returns the sales object length wrapped as a U64
-        U64(self.sales.len())
-    }
-    
-    //returns the number of sales for a given account (result is a string)
-    pub fn get_supply_by_owner_id(
-        &self,
-        account_id: AccountId,
-    ) -> U64 {
-        //get the set of sales for the given owner Id
-        let by_owner_id = self.by_owner_id.get(&account_id);
-        
-        //if there as some set, we return the length but if there wasn't a set, we return 0
-        if let Some(by_owner_id) = by_owner_id {
-            U64(by_owner_id.len())
-        } else {
-            U64(0)
-        }
-    }
+const MIN_REQUIRED_APPROVAL_YOCTO: u128 = 170000000000000000000;
+const MIN_REQUIRED_STORAGE_YOCTO: u128 = 10000000000000000000000;
 
-    //returns paginated sale objects for a given account. (result is a vector of sales)
-    pub fn get_sales_by_owner_id(
-        &self,
-        account_id: AccountId,
-        from_index: Option<U128>,
-        limit: Option<u64>,
-    ) -> Vec<Sale> {
-        //get the set of token IDs for sale for the given account ID
-        let by_owner_id = self.by_owner_id.get(&account_id);
-        //if there was some set, we set the sales variable equal to that set. If there wasn't, sales is set to an empty vector
-        let sales = if let Some(by_owner_id) = by_owner_id {
-            by_owner_id
-        } else {
-            return vec![];
-        };
-        
-        //we'll convert the UnorderedSet into a vector of strings
-        let keys = sales.as_vector();
+fn get_context(predecessor: AccountId) -> VMContextBuilder {
+    let mut builder = VMContextBuilder::new();
+    builder.predecessor_account_id(predecessor);
+    builder
+}
 
-        //where to start pagination - if we have a from_index, we'll use that - otherwise start from 0 index
-        let start = u128::from(from_index.unwrap_or(U128(0)));
-        
-        //iterate through the keys vector
-        keys.iter()
-            //skip to the index we specified in the start variable
-            .skip(start as usize) 
-            //take the first "limit" elements in the vector. If we didn't specify a limit, use 0
-            .take(limit.unwrap_or(0) as usize) 
-            //we'll map the token IDs which are strings into Sale objects
-            .map(|token_id| self.sales.get(&token_id).unwrap())
-            //since we turned the keys into an iterator, we need to turn it back into a vector to return
-            .collect()
-    }
+#[test]
+#[should_panic(expected = "The contract is not initialized")]
+fn test_default() {
+    let context = get_context(accounts(0));
+    testing_env!(context.build());
+    let _contract = Contract::default();
+}
 
-    //get the number of sales for an nft contract. (returns a string)
-    pub fn get_supply_by_nft_contract_id(
-        &self,
-        nft_contract_id: AccountId,
-    ) -> U64 {
-        //get the set of tokens for associated with the given nft contract
-        let by_nft_contract_id = self.by_nft_contract_id.get(&nft_contract_id);
-        
-        //if there was some set, return it's length. Otherwise return 0
-        if let Some(by_nft_contract_id) = by_nft_contract_id {
-            U64(by_nft_contract_id.len())
-        } else {
-            U64(0)
-        }
-    }
+#[test]
+#[should_panic(expected = "Requires minimum deposit of 10000000000000000000000")]
+fn test_storage_deposit_insufficient_deposit() {
+    let mut context = get_context(accounts(0));
+    testing_env!(context.build());
+    let mut contract = Contract::new(accounts(0));
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(MIN_REQUIRED_APPROVAL_YOCTO)
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_deposit(Some(accounts(0)));
+}
 
-    //returns paginated sale objects associated with a given nft contract. (result is a vector of sales)
-    pub fn get_sales_by_nft_contract_id(
-        &self,
-        nft_contract_id: AccountId,
-        from_index: Option<U128>,
-        limit: Option<u64>,
-    ) -> Vec<Sale> {
-        //get the set of token IDs for sale for the given contract ID
-        let by_nft_contract_id = self.by_nft_contract_id.get(&nft_contract_id);
-        
-        //if there was some set, we set the sales variable equal to that set. If there wasn't, sales is set to an empty vector
-        let sales = if let Some(by_nft_contract_id) = by_nft_contract_id {
-            by_nft_contract_id
-        } else {
-            return vec![];
-        };
+#[test]
+fn test_storage_deposit() {
+    let mut context = get_context(accounts(0));
+    testing_env!(context.build());
+    let mut contract = Contract::new(accounts(0));
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(MIN_REQUIRED_STORAGE_YOCTO)
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_deposit(Some(accounts(0)));
+    let outcome = contract.storage_deposits.get(&accounts(0));
+    let expected = MIN_REQUIRED_STORAGE_YOCTO;
+    assert_eq!(outcome, Some(expected));
+}
 
-        //we'll convert the UnorderedSet into a vector of strings
-        let keys = sales.as_vector();
+#[test]
+fn test_storage_balance_of() {
+    let mut context = get_context(accounts(0));
+    testing_env!(context.build());
+    let mut contract = Contract::new(accounts(0));
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(MIN_REQUIRED_STORAGE_YOCTO)
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_deposit(Some(accounts(0)));
+    let balance = contract.storage_balance_of(accounts(0));
+    assert_eq!(balance, U128(MIN_REQUIRED_STORAGE_YOCTO));
+}
 
-        //where to start pagination - if we have a from_index, we'll use that - otherwise start from 0 index
-        let start = u128::from(from_index.unwrap_or(U128(0)));
-        
-        //iterate through the keys vector
-        keys.iter()
-            //skip to the index we specified in the start variable
-            .skip(start as usize) 
-            //take the first "limit" elements in the vector. If we didn't specify a limit, use 0
-            .take(limit.unwrap_or(0) as usize) 
-            //we'll map the token IDs which are strings into Sale objects by passing in the unique sale ID (contract + DELIMITER + token ID)
-            .map(|token_id| self.sales.get(&format!("{}{}{}", nft_contract_id, DELIMETER, token_id)).unwrap())
-            //since we turned the keys into an iterator, we need to turn it back into a vector to return
-            .collect()
-    }
+#[test]
+fn test_storage_withdraw() {
+    let mut context = get_context(accounts(0));
+    testing_env!(context.build());
+    let mut contract = Contract::new(accounts(0));
 
-    //get a sale information for a given unique sale ID (contract + DELIMITER + token ID)
-    pub fn get_sale(&self, nft_contract_token: ContractAndTokenId) -> Option<Sale> {
-        //try and get the sale object for the given unique sale ID. Will return an option since
-        //we're not guaranteed that the unique sale ID passed in will be valid.
-        self.sales.get(&nft_contract_token)
-    }
+    // deposit amount
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(MIN_REQUIRED_STORAGE_YOCTO)
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_deposit(Some(accounts(0)));
+
+    // withdraw amount
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(U128(1).0) // below func requires a min of 1 yocto attached
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_withdraw();
+
+    let remaining_amount = contract.storage_balance_of(accounts(0));
+    assert_eq!(remaining_amount, U128(0))
+}
+
+#[test]
+fn test_remove_sale() {
+    let mut context = get_context(accounts(0));
+    testing_env!(context.build());
+    let mut contract = Contract::new(accounts(0));
+
+    // deposit amount
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(MIN_REQUIRED_STORAGE_YOCTO)
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_deposit(Some(accounts(0)));
+
+    // add sale
+    let token_id = String::from("0n3C0ntr4ctT0Rul3Th3m4ll");
+    let sale = Sale {
+        owner_id: accounts(0).clone(), //owner of the sale / token
+        approval_id: U64(1).0,         //approval ID for that token that was given to the market
+        nft_contract_id: env::predecessor_account_id().to_string(), //NFT contract the token was minted on
+        token_id: token_id.clone(),                                 //the actual token ID
+        sale_conditions: U128(100), //the sale conditions -- price in YOCTO NEAR
+    };
+    let nft_contract_id = env::predecessor_account_id();
+    let contract_and_token_id = format!("{}{}{}", nft_contract_id, ".", token_id);
+    contract.sales.insert(&contract_and_token_id, &sale);
+    let owner_token_set = UnorderedSet::new(contract_and_token_id.as_bytes());
+    contract
+        .by_owner_id
+        .insert(&sale.owner_id, &owner_token_set);
+    let nft_token_set = UnorderedSet::new(token_id.as_bytes());
+    contract
+        .by_nft_contract_id
+        .insert(&sale.owner_id, &nft_token_set);
+    assert_eq!(contract.sales.len(), 1, "Failed to insert sale to contract");
+
+    // remove sale
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(U128(1).0) // below func requires a min of 1 yocto attached
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.remove_sale(nft_contract_id, token_id);
+    assert_eq!(
+        contract.sales.len(),
+        0,
+        "Failed to remove sale from contract"
+    );
+}
+
+#[test]
+fn test_update_price() {
+    let mut context = get_context(accounts(0));
+    testing_env!(context.build());
+    let mut contract = Contract::new(accounts(0));
+
+    // deposit amount
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(MIN_REQUIRED_STORAGE_YOCTO)
+        .predecessor_account_id(accounts(0))
+        .build());
+    contract.storage_deposit(Some(accounts(0)));
+
+    // add sale
+    let token_id = String::from("0n3C0ntr4ctT0Rul3Th3m4ll");
+    let nft_bid_yocto = U128(100);
+    let sale = Sale {
+        owner_id: accounts(0).clone(), //owner of the sale / token
+        approval_id: U64(1).0,         //approval ID for that token that was given to the market
+        nft_contract_id: env::predecessor_account_id().to_string(), //NFT contract the token was minted on
+        token_id: token_id.clone(),                                 //the actual token ID
+        sale_conditions: nft_bid_yocto, //the sale conditions -- price in YOCTO NEAR
+    };
+    let nft_contract_id = env::predecessor_account_id();
+    let contract_and_token_id = format!("{}{}{}", nft_contract_id, ".", token_id);
+    contract.sales.insert(&contract_and_token_id, &sale);
+    let owner_token_set = UnorderedSet::new(contract_and_token_id.as_bytes());
+    contract
+        .by_owner_id
+        .insert(&sale.owner_id, &owner_token_set);
+    let nft_token_set = UnorderedSet::new(token_id.as_bytes());
+    contract
+        .by_nft_contract_id
+        .insert(&sale.owner_id, &nft_token_set);
+    assert_eq!(contract.sales.len(), 1, "Failed to insert sale to contract");
+
+    // update price 
+    let new_price = U128(150);
+    testing_env!(context
+        .storage_usage(env::storage_usage())
+        .attached_deposit(U128(1).0)
+        .predecessor_account_id(accounts(0))  // bob to buy NFT from alice
+        .build());
+    contract.update_price(nft_contract_id, token_id, new_price);
+
+    // test update price success
+    let sale = contract.sales.get(&contract_and_token_id).expect("No sale");
+    assert_eq!(sale.sale_conditions, new_price);
 }

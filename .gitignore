@@ -8,8 +8,9 @@ node_modules
 # build
 /out
 /dist
-contract/target
+contract/**/target
 integration-tests/target
+frontend/.parcel-cache
 
 # keys
 /templates/react/neardev
