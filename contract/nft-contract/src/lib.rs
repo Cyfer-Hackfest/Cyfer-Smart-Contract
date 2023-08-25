@@ -14,6 +14,7 @@ pub use crate::nft_core::*;
 pub use crate::approval::*;
 pub use crate::royalty::*;
 pub use crate::events::*;
+pub use crate::profile::*;
 
 mod internal;
 mod approval; 
@@ -23,6 +24,7 @@ mod mint;
 mod nft_core; 
 mod royalty; 
 mod events;
+mod profile;
 
 /// This spec can be treated like a version of the standard.
 pub const NFT_METADATA_SPEC: &str = "1.0.0";
@@ -44,6 +46,8 @@ pub struct Contract {
     //keeps track of the token metadata for a given token ID
     pub token_metadata_by_id: UnorderedMap<TokenId, TokenMetadata>,
 
+    pub user_profile: LookupMap<AccountId, UserProfile>,
+
     //keeps track of the metadata for the contract
     pub metadata: LazyOption<NFTContractMetadata>,
 }
@@ -55,6 +59,7 @@ pub enum StorageKey {
     TokenPerOwnerInner { account_id_hash: CryptoHash },
     TokensById,
     TokenMetadataById,
+    UserProfileById,
     NFTContractMetadata,
     TokensPerType,
     TokensPerTypeInner { token_type_hash: CryptoHash },
@@ -100,6 +105,7 @@ impl Contract {
             token_metadata_by_id: UnorderedMap::new(
                 StorageKey::TokenMetadataById.try_to_vec().unwrap(),
             ),
+            user_profile: LookupMap::new(StorageKey::UserProfileById.try_to_vec().unwrap()),
             //set the owner_id field equal to the passed in owner_id. 
             owner_id,
             metadata: LazyOption::new(
